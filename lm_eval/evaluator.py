@@ -111,6 +111,41 @@ def simple_evaluate(
         assert isinstance(model, lm_eval.api.model.LM)
         lm = model
 
+    print(lm._model)
+
+    # 计算吞吐量
+    # 创建一个虚拟输入
+    max_index_value = 50280  # 假设这是你的嵌入矩阵的大小
+    __batch_size__ = 32
+    dummy_input = torch.randint(max_index_value, (__batch_size__, 64), dtype=torch.long).to(device)  # 创建整数类型的虚拟输入
+
+    # 使用 benchmark.Timer 测量模型执行时间
+    import torch.utils.benchmark as benchmark
+    timer = benchmark.Timer(stmt='model(dummy_input)',
+                            globals={'model': lm._model, 'dummy_input': dummy_input})
+
+    # 使用 timeit 方法来执行测量
+    time_result = timer.timeit(100)  # 例如，重复100次来获取平均执行时间
+    print(f"平均执行时间: {time_result.mean}秒")  # 平均执行时间: 0.02385020107962191秒
+    # 批次处理时间，秒
+    average_execution_time = time_result.mean
+
+    # 计算吞吐量
+    throughput_batches_per_second = __batch_size__ / average_execution_time  # 批次/秒
+    throughput_samples_per_second = throughput_batches_per_second * __batch_size__  # 样本/秒
+
+    print(f"吞吐量: {throughput_batches_per_second:.2f} 批次/秒")
+    print(f"吞吐量: {throughput_samples_per_second:.2f} 样本/秒")
+
+    # 使用 thop 来估计模型的 MACs
+    from thop import profile
+    model = lm._model.to(device)
+    macs, params = profile(model, inputs=(dummy_input,), verbose=False)
+    print(f"总MACs: {macs}")  # 总MACs: 4481925120.0
+
+    import pdb;    pdb.set_trace()
+
+
     if use_cache is not None:
         print(f"Using cache at {use_cache + '_rank' + str(lm.rank) + '.db'}")
         lm = lm_eval.api.model.CachingLM(
